@@ -7,4 +7,41 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Filled in Phase 1.
+model Flavor {
+  id          String   @id
+  name        String
+  description String
+  tracks      Track[]
+  createdAt   DateTime @default(now())
+}
+
+model Track {
+  id         String   @id @default(cuid())
+  itunesId   String   @unique
+  title      String
+  artist     String
+  album      String
+  year       Int?
+  genre      String?
+  artworkUrl String
+  previewUrl String
+  flavorId   String
+  flavor     Flavor   @relation(fields: [flavorId], references: [id])
+  fetchedAt  DateTime @default(now())
+
+  @@index([flavorId])
+  @@index([artist])
+  @@index([year])
+  @@index([genre])
+}
+
+model DailyPuzzleCache {
+  id        String   @id @default(cuid())
+  flavorId  String
+  date      String
+  payload   Json
+  createdAt DateTime @default(now())
+
+  @@unique([flavorId, date])
+  @@index([flavorId])
+}
