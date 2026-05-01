@@ -4,6 +4,7 @@ import cors from 'cors'
 
 import healthzRoute from './routes/healthz'
 import flavorsRoute from './routes/flavors'
+import puzzlesRoute from './routes/puzzles'
 import { errorHandler, notFound } from './middleware/errorHandler'
 
 const app = express()
@@ -18,6 +19,7 @@ app.use(express.json())
 
 app.use('/healthz', healthzRoute)
 app.use('/flavors', flavorsRoute)
+app.use('/puzzles', puzzlesRoute)
 
 app.use(notFound)
 app.use(errorHandler)
