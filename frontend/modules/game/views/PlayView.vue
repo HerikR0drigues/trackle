@@ -2,6 +2,7 @@
 import { useGameStore } from '~/modules/game/store'
 import { fetchDailyPuzzle } from '~/modules/game/api'
 import GameBoard from '~/modules/game/components/GameBoard.vue'
+import ResultModal from '~/modules/stats/components/ResultModal.vue'
 
 const props = defineProps<{ flavorId: string }>()
 
@@ -33,7 +34,10 @@ useSeoMeta({
       Couldn't load today's puzzle: {{ error.message }}
     </div>
 
-    <GameBoard v-else />
+    <template v-else>
+      <GameBoard />
+      <ResultModal />
+    </template>
 
     <p v-if="!game.isComplete" class="hint">
       Press play, then pick the album cover that matches what you hear.

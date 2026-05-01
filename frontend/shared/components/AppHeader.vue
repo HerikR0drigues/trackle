@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import ThemeToggle from '~/shared/components/ThemeToggle.vue'
+import StreakBadge from '~/modules/stats/components/StreakBadge.vue'
 </script>
 
 <template>
@@ -11,6 +12,7 @@ import ThemeToggle from '~/shared/components/ThemeToggle.vue'
       <span class="brand-name">musicle</span>
     </NuxtLink>
     <div class="actions">
+      <StreakBadge />
       <ThemeToggle />
     </div>
   </header>
