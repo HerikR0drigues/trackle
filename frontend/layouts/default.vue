@@ -1,7 +1,11 @@
+<script setup lang="ts">
+import AppShell from '~/shared/components/AppShell.vue'
+</script>
+
 <template>
   <v-app>
-    <v-main>
+    <AppShell>
       <slot />
-    </v-main>
+    </AppShell>
   </v-app>
 </template>

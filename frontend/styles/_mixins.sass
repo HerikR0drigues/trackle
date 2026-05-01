@@ -1,0 +1,12 @@
+// Breakpoints (sass at-rules — used inside .vue scoped styles).
+@mixin until-mobile
+  @media (max-width: 599.98px)
+    @content
+
+@mixin tablet-up
+  @media (min-width: 600px)
+    @content
+
+@mixin desktop-up
+  @media (min-width: 960px)
+    @content
