@@ -14,7 +14,7 @@ Daily music quiz inspired by [musicle.app](https://www.musicle.app). Study proje
 ## Local setup
 
 ```bash
-# 1. Postgres up
+# 1. Postgres up (host port 5433 to avoid clashing with other local Postgres)
 docker compose up -d
 
 # 2. Backend
