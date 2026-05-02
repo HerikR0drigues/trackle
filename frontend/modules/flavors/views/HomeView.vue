@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { useFlavorsStore } from '~/modules/flavors/store'
+import { listFlavors } from '~/modules/flavors/api'
 import FlavorCard from '~/modules/flavors/components/FlavorCard.vue'
 
 const store = useFlavorsStore()
 
-// Loaded both server- and client-side; SSR will hydrate the list.
-await useAsyncData('flavors', () => store.load())
+await useAsyncData('flavors', async () => {
+  if (store.flavors.length === 0) await listFlavors()
+  return store.flavors
+})
 </script>
 
 <template>

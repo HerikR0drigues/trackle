@@ -1,10 +1,12 @@
+import { useStatsStore } from './store'
 import { EMPTY_STATS, type StatsState } from './types'
 
 const KEY = 'trackle:stats:v1'
 
-const isBrowser = (): boolean => typeof window !== 'undefined' && typeof window.localStorage !== 'undefined'
+const isBrowser = (): boolean =>
+  typeof window !== 'undefined' && typeof window.localStorage !== 'undefined'
 
-export const readStats = (): StatsState => {
+function readFromStorage(): StatsState {
   if (!isBrowser()) return { ...EMPTY_STATS }
   try {
     const raw = window.localStorage.getItem(KEY)
@@ -21,12 +23,12 @@ export const readStats = (): StatsState => {
   }
 }
 
-export const writeStats = (state: StatsState): void => {
+function writeToStorage(state: StatsState): void {
   if (!isBrowser()) return
   try {
     window.localStorage.setItem(KEY, JSON.stringify(state))
   } catch {
-    // ignore quota / disabled storage
+    /* quota / disabled */
   }
 }
 
@@ -44,32 +46,47 @@ export interface RecordResultArgs {
   total: number
 }
 
-export const recordResult = (state: StatsState, args: RecordResultArgs): StatsState => {
-  // Idempotent: don't double-count if the same (flavor, date) is replayed.
-  const alreadyRecorded = state.history.some(
+/** Hydrate the store from localStorage. Idempotent. */
+export function hydrateStats(): void {
+  const store = useStatsStore()
+  if (store.hydrated) return
+  store.setState(readFromStorage())
+  store.setHydrated(true)
+}
+
+/** Record a finished game; persists to localStorage and updates the store. */
+export function recordResult(args: RecordResultArgs): void {
+  const store = useStatsStore()
+  if (!store.hydrated) hydrateStats()
+
+  const current = store.state
+  const alreadyRecorded = current.history.some(
     (h) => h.date === args.date && h.flavorId === args.flavorId,
   )
-  if (alreadyRecorded) return state
+  if (alreadyRecorded) return
 
   const played = args.score > 0
   let nextStreak: number
   if (!played) {
     nextStreak = 0
-  } else if (state.lastPlayedDate === yesterdayOf(args.date)) {
-    nextStreak = state.currentStreak + 1
-  } else if (state.lastPlayedDate === args.date) {
-    nextStreak = state.currentStreak
+  } else if (current.lastPlayedDate === yesterdayOf(args.date)) {
+    nextStreak = current.currentStreak + 1
+  } else if (current.lastPlayedDate === args.date) {
+    nextStreak = current.currentStreak
   } else {
     nextStreak = 1
   }
 
-  return {
+  const next: StatsState = {
     lastPlayedDate: args.date,
     currentStreak: nextStreak,
-    maxStreak: Math.max(state.maxStreak, nextStreak),
+    maxStreak: Math.max(current.maxStreak, nextStreak),
     history: [
-      ...state.history,
+      ...current.history,
       { date: args.date, flavorId: args.flavorId, day: args.day, score: args.score, total: args.total },
     ],
   }
+
+  store.setState(next)
+  writeToStorage(next)
 }

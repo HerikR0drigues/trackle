@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { useStatsStore } from '~/modules/stats/store'
+import { hydrateStats } from '~/modules/stats/api'
 
 const stats = useStatsStore()
 
-onMounted(() => stats.hydrate())
+onMounted(() => hydrateStats())
 
 // Hide entirely until hydrated to avoid SSR mismatch (server has 0).
 const visible = computed(() => stats.hydrated && stats.currentStreak > 0)

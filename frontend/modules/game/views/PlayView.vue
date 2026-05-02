@@ -8,15 +8,13 @@ const props = defineProps<{ flavorId: string }>()
 
 const game = useGameStore()
 
-const { data, error } = await useAsyncData(`puzzle:${props.flavorId}`, async () => {
-  const res = await fetchDailyPuzzle({ flavor: props.flavorId })
-  if (!res.value) throw new Error(res.message)
-  game.init(res.value)
-  return res.value
+await useAsyncData(`puzzle:${props.flavorId}`, async () => {
+  await fetchDailyPuzzle({ flavor: props.flavorId })
+  return game.puzzle
 })
 
 useSeoMeta({
-  title: () => (data.value ? `Trackle ${data.value.flavor.name} #${data.value.day}` : 'Trackle'),
+  title: () => (game.puzzle ? `Trackle ${game.puzzle.flavor.name} #${game.puzzle.day}` : 'Trackle'),
 })
 </script>
 
@@ -24,14 +22,14 @@ useSeoMeta({
   <section class="play">
     <header class="header">
       <h1 class="title">
-        <span class="brand-tail">{{ data?.flavor.name ?? '...' }}</span>
-        <span v-if="data" class="day">#{{ data.day }}</span>
+        <span class="brand-tail">{{ game.puzzle?.flavor.name ?? '...' }}</span>
+        <span v-if="game.puzzle" class="day">#{{ game.puzzle.day }}</span>
       </h1>
-      <p class="subtitle">{{ data?.flavor.description ?? '' }}</p>
+      <p class="subtitle">{{ game.puzzle?.flavor.description ?? '' }}</p>
     </header>
 
-    <div v-if="error" class="error" role="alert">
-      Couldn't load today's puzzle: {{ error.message }}
+    <div v-if="game.error" class="error" role="alert">
+      Couldn't load today's puzzle: {{ game.error }}
     </div>
 
     <template v-else>
@@ -39,10 +37,10 @@ useSeoMeta({
       <ResultModal />
     </template>
 
-    <p v-if="!game.isComplete" class="hint">
+    <p v-if="game.puzzle && !game.isComplete" class="hint">
       Press play, then pick the album cover that matches what you hear.
     </p>
-    <p v-else class="hint result">
+    <p v-else-if="game.isComplete" class="hint result">
       You scored {{ game.score }} / {{ game.puzzle?.columns.length ?? 3 }}.
     </p>
   </section>

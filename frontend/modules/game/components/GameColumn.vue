@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useAudio } from '~/shared/composables/useAudio'
 import { useGameStore } from '~/modules/game/store'
+import { submitGuess } from '~/modules/game/api'
 import AlbumCard from '~/modules/game/components/AlbumCard.vue'
 import type { PuzzleColumn } from '~/modules/game/types'
 
@@ -43,7 +44,7 @@ const togglePlay = () => audio.toggle(props.column.audio)
         :key="opt.id"
         :option="opt"
         :state="cardState(opt.id)"
-        @select="game.guess(columnIndex, $event)"
+        @select="submitGuess(columnIndex, $event)"
       />
     </div>
   </section>

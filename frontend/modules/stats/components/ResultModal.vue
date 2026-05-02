@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useGameStore } from '~/modules/game/store'
 import { useStatsStore } from '~/modules/stats/store'
+import { hydrateStats, recordResult } from '~/modules/stats/api'
 
 const game = useGameStore()
 const stats = useStatsStore()
@@ -12,8 +13,8 @@ watch(
   () => game.isComplete,
   (done) => {
     if (!done || !game.puzzle) return
-    stats.hydrate()
-    stats.record({
+    hydrateStats()
+    recordResult({
       date: game.puzzle.date,
       flavorId: game.puzzle.flavor.id,
       day: game.puzzle.day,

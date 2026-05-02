@@ -1,5 +1,4 @@
 import { defineStore } from 'pinia'
-import { fetchFlavors } from './api'
 import type { Flavor } from './types'
 
 export const useFlavorsStore = defineStore('flavors', () => {
@@ -7,19 +6,23 @@ export const useFlavorsStore = defineStore('flavors', () => {
   const loading = ref(false)
   const error = ref<string | null>(null)
 
-  const load = async (): Promise<Flavor[]> => {
-    if (flavors.value.length > 0) return flavors.value
-    loading.value = true
-    error.value = null
-    const res = await fetchFlavors()
-    if (res.value) {
-      flavors.value = res.value
-    } else {
-      error.value = res.message
-    }
-    loading.value = false
-    return flavors.value
+  function setFlavors(value: Flavor[]) {
+    flavors.value = value
   }
 
-  return { flavors, loading, error, load }
+  function setLoading(value: boolean) {
+    loading.value = value
+  }
+
+  function setError(message: string | null) {
+    error.value = message
+  }
+
+  function clearAll() {
+    flavors.value = []
+    loading.value = false
+    error.value = null
+  }
+
+  return { flavors, loading, error, setFlavors, setLoading, setError, clearAll }
 })

@@ -5,6 +5,8 @@ export const useGameStore = defineStore('game', () => {
   const puzzle = ref<DailyPuzzle | null>(null)
   const guesses = ref<Record<number, AlbumOption>>({})
   const results = ref<Record<number, GuessResult>>({})
+  const loading = ref(false)
+  const error = ref<string | null>(null)
 
   const score = computed(() => Object.values(results.value).filter((r) => r === 'correct').length)
 
@@ -13,10 +15,6 @@ export const useGameStore = defineStore('game', () => {
     return Object.keys(results.value).length === puzzle.value.columns.length
   })
 
-  /**
-   * Index of the first column without a result yet, or -1 if all are resolved.
-   * Used to highlight the "active" column in the UI.
-   */
   const activeColumn = computed(() => {
     if (!puzzle.value) return -1
     for (let i = 0; i < puzzle.value.columns.length; i++) {
@@ -25,31 +23,6 @@ export const useGameStore = defineStore('game', () => {
     return -1
   })
 
-  const init = (p: DailyPuzzle) => {
-    puzzle.value = p
-    guesses.value = {}
-    results.value = {}
-  }
-
-  const guess = (columnIndex: number, option: AlbumOption): GuessResult | null => {
-    if (!puzzle.value) return null
-    if (results.value[columnIndex]) return results.value[columnIndex]
-    const audio = puzzle.value.columns[columnIndex]?.audio
-    if (!audio) return null
-    const next: GuessResult = option.previewUrl === audio ? 'correct' : 'wrong'
-    guesses.value = { ...guesses.value, [columnIndex]: option }
-    results.value = { ...results.value, [columnIndex]: next }
-    return next
-  }
-
-  const reset = () => {
-    guesses.value = {}
-    results.value = {}
-  }
-
-  /**
-   * Wordle-style summary: "Trackle Rock #42  ✅✅❌"
-   */
   const shareString = computed(() => {
     if (!puzzle.value) return ''
     const flavorName = puzzle.value.flavor.name
@@ -60,16 +33,47 @@ export const useGameStore = defineStore('game', () => {
     return `Trackle ${flavorName} #${day}  ${tiles}`
   })
 
+  function setPuzzle(p: DailyPuzzle) {
+    puzzle.value = p
+    guesses.value = {}
+    results.value = {}
+  }
+
+  function setGuess(columnIndex: number, option: AlbumOption, result: GuessResult) {
+    guesses.value = { ...guesses.value, [columnIndex]: option }
+    results.value = { ...results.value, [columnIndex]: result }
+  }
+
+  function setLoading(value: boolean) {
+    loading.value = value
+  }
+
+  function setError(message: string | null) {
+    error.value = message
+  }
+
+  function clearAll() {
+    puzzle.value = null
+    guesses.value = {}
+    results.value = {}
+    loading.value = false
+    error.value = null
+  }
+
   return {
     puzzle,
     guesses,
     results,
+    loading,
+    error,
     score,
     isComplete,
     activeColumn,
     shareString,
-    init,
-    guess,
-    reset,
+    setPuzzle,
+    setGuess,
+    setLoading,
+    setError,
+    clearAll,
   }
 })
