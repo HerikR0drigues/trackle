@@ -25,5 +25,5 @@ app.use(notFound)
 app.use(errorHandler)
 
 app.listen(PORT, () => {
-  console.log(`[musicle-backend] listening on http://localhost:${PORT}`)
+  console.log(`[trackle-backend] listening on http://localhost:${PORT}`)
 })

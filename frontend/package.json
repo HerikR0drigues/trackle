@@ -1,8 +1,8 @@
 {
-  "name": "musicle-frontend",
+  "name": "trackle-frontend",
   "version": "0.1.0",
   "private": true,
-  "description": "Musicle daily music quiz — Nuxt 3 frontend",
+  "description": "Trackle daily music quiz — Nuxt 3 frontend",
   "scripts": {
     "dev": "nuxt dev",
     "build": "nuxt build",

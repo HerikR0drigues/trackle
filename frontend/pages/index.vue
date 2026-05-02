@@ -2,7 +2,7 @@
 import HomeView from '~/modules/flavors/views/HomeView.vue'
 
 useSeoMeta({
-  title: 'Musicle — daily music quiz',
+  title: 'Trackle — daily music quiz',
 })
 </script>
 

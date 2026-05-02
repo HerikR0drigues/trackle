@@ -1,6 +1,6 @@
 import { EMPTY_STATS, type StatsState } from './types'
 
-const KEY = 'musicle:stats:v1'
+const KEY = 'trackle:stats:v1'
 
 const isBrowser = (): boolean => typeof window !== 'undefined' && typeof window.localStorage !== 'undefined'
 

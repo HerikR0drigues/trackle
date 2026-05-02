@@ -1,5 +1,5 @@
 /**
- * Generates a daily Musicle puzzle deterministically:
+ * Generates a daily Trackle puzzle deterministically:
  *   - 3 columns, each with one "target" track (the audio that plays) and 4
  *     options (the target plus 3 decoys chosen to be plausibly similar).
  *   - The same (flavorId, date) always produces the same puzzle. Cached in

@@ -5,8 +5,7 @@
       <a href="https://www.apple.com/itunes/" target="_blank" rel="noreferrer noopener">Apple Inc. (iTunes)</a>.
     </p>
     <p class="meta">
-      Musicle clone — study project. Inspired by
-      <a href="https://www.musicle.app/" target="_blank" rel="noreferrer noopener">musicle.app</a>.
+      Trackle — daily music quiz, study project.
     </p>
   </footer>
 </template>

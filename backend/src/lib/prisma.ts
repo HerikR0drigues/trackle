@@ -2,15 +2,15 @@ import { PrismaClient } from '@prisma/client'
 
 declare global {
   // eslint-disable-next-line no-var
-  var __musiclePrisma: PrismaClient | undefined
+  var __tracklePrisma: PrismaClient | undefined
 }
 
 export const prisma =
-  global.__musiclePrisma ??
+  global.__tracklePrisma ??
   new PrismaClient({
     log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
   })
 
 if (process.env.NODE_ENV !== 'production') {
-  global.__musiclePrisma = prisma
+  global.__tracklePrisma = prisma
 }

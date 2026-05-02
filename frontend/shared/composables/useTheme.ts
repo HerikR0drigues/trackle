@@ -1,8 +1,8 @@
 import { useTheme as useVuetifyTheme } from 'vuetify'
 import { useThemeStore, type ThemeMode } from '~/shared/stores/theme'
 
-const COOKIE_KEY = 'musicle-theme'
-const VUETIFY_NAME = { light: 'musicleLight', dark: 'musicleDark' } as const
+const COOKIE_KEY = 'trackle-theme'
+const VUETIFY_NAME = { light: 'trackleLight', dark: 'trackleDark' } as const
 
 /**
  * Single source of truth for theme:

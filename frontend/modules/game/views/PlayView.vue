@@ -16,7 +16,7 @@ const { data, error } = await useAsyncData(`puzzle:${props.flavorId}`, async () 
 })
 
 useSeoMeta({
-  title: () => (data.value ? `Musicle ${data.value.flavor.name} #${data.value.day}` : 'Musicle'),
+  title: () => (data.value ? `Trackle ${data.value.flavor.name} #${data.value.day}` : 'Trackle'),
 })
 </script>
 

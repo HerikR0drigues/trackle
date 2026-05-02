@@ -1,18 +1,18 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: musicle-pg
+    container_name: trackle-pg
     restart: unless-stopped
     environment:
-      POSTGRES_USER: musicle
-      POSTGRES_PASSWORD: musicle
-      POSTGRES_DB: musicle
+      POSTGRES_USER: trackle
+      POSTGRES_PASSWORD: trackle
+      POSTGRES_DB: trackle
     ports:
       - "5433:5432"
     volumes:
       - ./postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U musicle -d musicle"]
+      test: ["CMD-SHELL", "pg_isready -U trackle -d trackle"]
       interval: 5s
       timeout: 5s
       retries: 10

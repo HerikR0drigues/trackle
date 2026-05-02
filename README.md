@@ -1,6 +1,6 @@
-# Musicle Clone
+# Trackle
 
-Daily music quiz inspired by [musicle.app](https://www.musicle.app). Three columns, four album covers each — listen to the 30-second preview and pick the matching cover. Decoys are picked to be plausibly similar (same artist, era ±5 years, same genre) so the puzzle is genuinely tricky.
+A Wordle-style daily music quiz. Three columns, four album covers each — listen to the 30-second preview and pick the matching cover. Decoys are picked to be plausibly similar (same artist, era ±5 years, same genre) so the puzzle is genuinely tricky.
 
 Built as a fullstack study project: **Nuxt 3** on the front, **Express + Prisma + Postgres** on the back, audio + metadata from the **iTunes Search API** (free, hot-linked from Apple's CDN — never rehosted).
 
@@ -74,7 +74,7 @@ The same `(flavor, date)` pair always returns the same puzzle.
 ## Project layout
 
 ```
-musicle/
+trackle/
 ├── docker-compose.yml      Postgres 16 (host port 5433)
 ├── mise.toml               pins Node 22 (matches Render runtime)
 │
@@ -97,7 +97,7 @@ musicle/
     ├── app.vue
     ├── layouts/default.vue
     ├── pages/              index.vue, play/[flavor].vue
-    ├── plugins/vuetify.ts  SSR + 2 themes (musicleLight / musicleDark)
+    ├── plugins/vuetify.ts  SSR + 2 themes (trackleLight / trackleDark)
     ├── modules/
     │   ├── flavors/        api, store, types, views, components
     │   ├── game/           api, store, types, views (PlayView), components
@@ -123,7 +123,7 @@ musicle/
 
 | Var | Default | Purpose |
 |---|---|---|
-| `DATABASE_URL` | `postgresql://musicle:musicle@localhost:5433/musicle?schema=public` | Prisma connection string |
+| `DATABASE_URL` | `postgresql://trackle:trackle@localhost:5433/trackle?schema=public` | Prisma connection string |
 | `PORT` | `3001` | HTTP port |
 | `CORS_ORIGIN` | `http://localhost:3000` | Allowed origins (comma-separated, or `*` for any) |
 | `ITUNES_BASE_URL` | `https://itunes.apple.com` | iTunes Search base |
@@ -142,7 +142,7 @@ musicle/
 
 1. Push the repo to GitHub.
 2. On Render, **New → Blueprint** and pick the repo. Render reads `backend/render.yaml`, provisions a Free web service plus a Free Postgres database, and wires `DATABASE_URL` automatically.
-3. Open the new service → **Environment** → set `CORS_ORIGIN` to your eventual Vercel URL (e.g. `https://musicle.vercel.app`).
+3. Open the new service → **Environment** → set `CORS_ORIGIN` to your eventual Vercel URL (e.g. `https://trackle.vercel.app`).
 4. The first deploy runs `npm install && npm run build` (which calls `prisma generate`) and then `prisma migrate deploy && npm start` per `render.yaml`.
 5. Open the **Shell** tab and run the seed once: `npm run seed`.
 
@@ -154,7 +154,7 @@ Free-tier caveats:
 
 1. **Add new project** → import the same GitHub repo.
 2. **Root directory**: `frontend`. Framework should auto-detect as Nuxt.
-3. **Environment variables** → add `NUXT_PUBLIC_API_BASE` pointing to your Render URL (e.g. `https://musicle-api.onrender.com`).
+3. **Environment variables** → add `NUXT_PUBLIC_API_BASE` pointing to your Render URL (e.g. `https://trackle-api.onrender.com`).
 4. Deploy.
 
 After both are up, copy the Vercel URL into Render's `CORS_ORIGIN` and redeploy the backend so the browser is allowed to talk to it.
@@ -204,4 +204,4 @@ The audio you hear and the four cover options come from the same iTunes track re
 ## Credits
 
 - iTunes Search API for music metadata and 30 s previews — provided by Apple Inc.
-- Game design inspired by [musicle.app](https://www.musicle.app/) (Wordle-style daily music quiz).
+- Wordle-style game design (3 columns × 4 covers, deterministic daily seed).

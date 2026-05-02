@@ -11,7 +11,7 @@ await useAsyncData('flavors', () => store.load())
 <template>
   <section class="home">
     <header class="hero">
-      <h1 class="title">Today's Musicle</h1>
+      <h1 class="title">Today's Trackle</h1>
       <p class="subtitle">Pick a flavor. Listen. Guess the song.</p>
     </header>
 

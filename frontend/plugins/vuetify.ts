@@ -2,7 +2,7 @@ import { createVuetify, type ThemeDefinition } from 'vuetify'
 import * as components from 'vuetify/components'
 import * as directives from 'vuetify/directives'
 
-const musicleLight: ThemeDefinition = {
+const trackleLight: ThemeDefinition = {
   dark: false,
   colors: {
     background: '#faf8ff',
@@ -19,7 +19,7 @@ const musicleLight: ThemeDefinition = {
   },
 }
 
-const musicleDark: ThemeDefinition = {
+const trackleDark: ThemeDefinition = {
   dark: true,
   colors: {
     background: '#0f0a1a',
@@ -38,8 +38,8 @@ const musicleDark: ThemeDefinition = {
 
 export default defineNuxtPlugin((nuxtApp) => {
   // Read cookie at plugin time so SSR renders with the correct theme already.
-  const cookie = useCookie<'light' | 'dark'>('musicle-theme', { default: () => 'dark' })
-  const initial = cookie.value === 'light' ? 'musicleLight' : 'musicleDark'
+  const cookie = useCookie<'light' | 'dark'>('trackle-theme', { default: () => 'dark' })
+  const initial = cookie.value === 'light' ? 'trackleLight' : 'trackleDark'
 
   const vuetify = createVuetify({
     ssr: true,
@@ -47,7 +47,7 @@ export default defineNuxtPlugin((nuxtApp) => {
     directives,
     theme: {
       defaultTheme: initial,
-      themes: { musicleLight, musicleDark },
+      themes: { trackleLight, trackleDark },
     },
     defaults: {
       VBtn: { rounded: 'md', class: 'text-none', style: 'letter-spacing: 0.01em' },

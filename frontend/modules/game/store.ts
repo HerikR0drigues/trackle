@@ -48,7 +48,7 @@ export const useGameStore = defineStore('game', () => {
   }
 
   /**
-   * Wordle-style summary: "Musicle Rock #42  ✅✅❌"
+   * Wordle-style summary: "Trackle Rock #42  ✅✅❌"
    */
   const shareString = computed(() => {
     if (!puzzle.value) return ''
@@ -57,7 +57,7 @@ export const useGameStore = defineStore('game', () => {
     const tiles = puzzle.value.columns
       .map((_c, i) => (results.value[i] === 'correct' ? '🟢' : results.value[i] === 'wrong' ? '🔴' : '⬜'))
       .join('')
-    return `Musicle ${flavorName} #${day}  ${tiles}`
+    return `Trackle ${flavorName} #${day}  ${tiles}`
   })
 
   return {

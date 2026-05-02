@@ -9,7 +9,7 @@ import StreakBadge from '~/modules/stats/components/StreakBadge.vue'
       <span class="dot dot-1" />
       <span class="dot dot-2" />
       <span class="dot dot-3" />
-      <span class="brand-name">musicle</span>
+      <span class="brand-name">trackle</span>
     </NuxtLink>
     <div class="actions">
       <StreakBadge />
