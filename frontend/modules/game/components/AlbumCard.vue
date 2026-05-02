@@ -27,25 +27,22 @@ const stateClass = computed(() => `state-${props.state}`)
     @click="onClick"
   >
     <img :src="option.albumCover" :alt="`${option.album} — ${option.artist}`" loading="lazy" />
-    <div v-if="state === 'correct'" class="overlay correct" aria-hidden="true">
-      <v-icon size="32" class="overlay-icon">mdi-check</v-icon>
-    </div>
-    <div v-else-if="state === 'wrong'" class="overlay wrong" aria-hidden="true">
-      <v-icon size="32" class="overlay-icon">mdi-close</v-icon>
-    </div>
   </button>
 </template>
 
 <style scoped lang="sass">
 .album-card
   position: relative
-  width: 100%
+  height: 100%
+  width: auto
   aspect-ratio: 1 / 1
+  max-width: 100%
+  max-height: 100%
   padding: 0
   border: none
   background: none
   cursor: pointer
-  border-radius: var(--radius-md)
+  border-radius: var(--radius-sm)
   overflow: hidden
   transition: transform var(--duration-fast), box-shadow var(--duration-base), opacity var(--duration-base), filter var(--duration-base)
 
@@ -66,37 +63,18 @@ const stateClass = computed(() => `state-${props.state}`)
     outline-offset: 2px
 
   &.state-correct
-    box-shadow: 0 0 0 3px var(--color-success), var(--shadow-md)
+    box-shadow: 0 0 0 2px var(--color-success), var(--shadow-sm)
     cursor: default
 
   &.state-wrong
     cursor: default
     img
-      opacity: 0.55
+      opacity: 0.5
       filter: grayscale(0.7)
 
   &.state-locked
     cursor: not-allowed
     img
-      opacity: 0.4
+      opacity: 0.35
       filter: grayscale(0.4)
-
-.overlay
-  position: absolute
-  top: 8px
-  right: 8px
-  width: 40px
-  height: 40px
-  border-radius: var(--radius-pill)
-  display: flex
-  align-items: center
-  justify-content: center
-  box-shadow: var(--shadow-sm)
-  background-color: var(--color-surface)
-
-  &.correct .overlay-icon
-    color: var(--color-success)
-
-  &.wrong .overlay-icon
-    color: var(--color-danger)
 </style>

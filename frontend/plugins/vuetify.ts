@@ -5,16 +5,16 @@ import * as directives from 'vuetify/directives'
 const trackleLight: ThemeDefinition = {
   dark: false,
   colors: {
-    background: '#faf8ff',
-    surface: '#ffffff',
-    primary: '#8b5cf6',
-    secondary: '#a78bfa',
+    background: '#f5f5f7',
+    surface: '#ececef',
+    primary: '#7c3aed',
+    secondary: '#8b5cf6',
     error: '#ef4444',
-    info: '#8b5cf6',
+    info: '#7c3aed',
     success: '#10b981',
     warning: '#f59e0b',
-    'on-background': '#1a1325',
-    'on-surface': '#1a1325',
+    'on-background': '#0a0a0a',
+    'on-surface': '#0a0a0a',
     'on-primary': '#ffffff',
   },
 }
@@ -22,17 +22,17 @@ const trackleLight: ThemeDefinition = {
 const trackleDark: ThemeDefinition = {
   dark: true,
   colors: {
-    background: '#0f0a1a',
-    surface: '#1a1428',
-    primary: '#a78bfa',
-    secondary: '#8b5cf6',
+    background: '#0a0a0a',
+    surface: '#161616',
+    primary: '#8b5cf6',
+    secondary: '#7c3aed',
     error: '#f87171',
-    info: '#a78bfa',
+    info: '#8b5cf6',
     success: '#34d399',
     warning: '#fbbf24',
-    'on-background': '#ede9fe',
-    'on-surface': '#ede9fe',
-    'on-primary': '#1a1325',
+    'on-background': '#f5f5f7',
+    'on-surface': '#f5f5f7',
+    'on-primary': '#ffffff',
   },
 }
 
@@ -52,7 +52,7 @@ export default defineNuxtPlugin((nuxtApp) => {
     defaults: {
       VBtn: { rounded: 'md', class: 'text-none', style: 'letter-spacing: 0.01em' },
       VCard: { rounded: 'lg' },
-      VDialog: { transition: 'fade-transition' },
+      VDialog: { transition: false },
     },
   })
 

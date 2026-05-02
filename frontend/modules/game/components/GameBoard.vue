@@ -12,7 +12,7 @@ const game = useGameStore()
       :key="idx"
       :column="col"
       :column-index="idx"
-      :is-active="game.activeColumn === idx"
+      :is-locked="game.isColumnLocked(idx)"
     />
   </div>
 </template>
@@ -22,9 +22,13 @@ const game = useGameStore()
 
 .board
   display: grid
-  grid-template-columns: repeat(3, minmax(0, 1fr))
-  gap: var(--space-4)
+  grid-template-columns: repeat(3, minmax(0, max-content))
+  justify-content: center
+  gap: var(--space-3)
+  height: 100%
+  min-height: 0
 
   @include m.until-mobile
     grid-template-columns: 1fr
+    height: auto
 </style>

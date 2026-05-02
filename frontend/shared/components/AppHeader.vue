@@ -5,29 +5,35 @@ import StreakBadge from '~/modules/stats/components/StreakBadge.vue'
 
 <template>
   <header class="app-header">
-    <NuxtLink to="/" class="brand">
-      <span class="dot dot-1" />
-      <span class="dot dot-2" />
-      <span class="dot dot-3" />
-      <span class="brand-name">trackle</span>
-    </NuxtLink>
-    <div class="actions">
-      <StreakBadge />
-      <ThemeToggle />
+    <div class="header-inner">
+      <NuxtLink to="/" class="brand">
+        <span class="dot dot-1" />
+        <span class="dot dot-2" />
+        <span class="dot dot-3" />
+        <span class="brand-name">trackle</span>
+      </NuxtLink>
+      <div class="actions">
+        <StreakBadge />
+        <ThemeToggle />
+      </div>
     </div>
   </header>
 </template>
 
 <style scoped lang="sass">
-@use '~/styles/mixins' as m
-
 .app-header
+  border-bottom: 1px solid var(--color-border)
+  background-color: var(--color-bg)
+  flex-shrink: 0
+
+.header-inner
   display: flex
   align-items: center
   justify-content: space-between
-  padding: var(--space-4) var(--space-6)
-  border-bottom: 1px solid var(--color-border)
-  background-color: var(--color-surface)
+  width: 100%
+  max-width: var(--max-width-page)
+  margin: 0 auto
+  padding: var(--space-2) var(--space-4)
 
 .brand
   display: inline-flex
@@ -35,7 +41,7 @@ import StreakBadge from '~/modules/stats/components/StreakBadge.vue'
   gap: var(--space-2)
   color: var(--color-text)
   font-weight: 700
-  font-size: var(--font-lg)
+  font-size: var(--font-md)
   text-decoration: none
 
   &:hover
@@ -43,21 +49,21 @@ import StreakBadge from '~/modules/stats/components/StreakBadge.vue'
     color: var(--color-text)
 
 .dot
-  width: 12px
-  height: 28px
+  width: 10px
+  height: 22px
   border-radius: var(--radius-sm)
   background-color: var(--color-primary)
 
   &.dot-2
-    height: 22px
+    height: 18px
     opacity: 0.8
 
   &.dot-3
-    height: 16px
+    height: 14px
     opacity: 0.55
 
 .brand-name
-  margin-left: var(--space-2)
+  margin-left: var(--space-1)
   letter-spacing: -0.01em
 
 .actions

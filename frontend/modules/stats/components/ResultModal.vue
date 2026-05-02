@@ -42,7 +42,7 @@ const copyResult = async () => {
 </script>
 
 <template>
-  <v-dialog v-model="open" max-width="420" persistent>
+  <v-dialog v-model="open" max-width="420" :transition="false">
     <div class="result">
       <header class="head">
         <h2 class="title">{{ game.score === total ? 'Perfect!' : 'Nice try' }}</h2>

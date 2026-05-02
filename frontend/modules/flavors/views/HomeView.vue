@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { useFlavorsStore } from '~/modules/flavors/store'
-import { listFlavors } from '~/modules/flavors/api'
+import { flavorsApi } from '~/modules/flavors/api'
 import FlavorCard from '~/modules/flavors/components/FlavorCard.vue'
 
 const store = useFlavorsStore()
 
 await useAsyncData('flavors', async () => {
-  if (store.flavors.length === 0) await listFlavors()
+  if (store.flavors.length === 0) await flavorsApi.list()
   return store.flavors
 })
 </script>

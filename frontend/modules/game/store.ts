@@ -23,6 +23,18 @@ export const useGameStore = defineStore('game', () => {
     return -1
   })
 
+  /** Index of the next unresolved column. Anything ≤ this index is unlocked. */
+  const unlockedUntil = computed(() => {
+    if (!puzzle.value) return 0
+    let i = 0
+    while (i < puzzle.value.columns.length && results.value[i]) i++
+    return i
+  })
+
+  function isColumnLocked(idx: number): boolean {
+    return idx > unlockedUntil.value
+  }
+
   const shareString = computed(() => {
     if (!puzzle.value) return ''
     const flavorName = puzzle.value.flavor.name
@@ -69,6 +81,8 @@ export const useGameStore = defineStore('game', () => {
     score,
     isComplete,
     activeColumn,
+    unlockedUntil,
+    isColumnLocked,
     shareString,
     setPuzzle,
     setGuess,

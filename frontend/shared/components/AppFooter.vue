@@ -1,28 +1,31 @@
 <template>
   <footer class="app-footer">
-    <p class="attribution">
+    <span>
       Music data and audio previews provided by
-      <a href="https://www.apple.com/itunes/" target="_blank" rel="noreferrer noopener">Apple Inc. (iTunes)</a>.
-    </p>
-    <p class="meta">
-      Trackle — daily music quiz, study project.
-    </p>
+      <a href="https://www.apple.com/itunes/" target="_blank" rel="noreferrer noopener">Apple Inc. (iTunes)</a>
+      · Trackle — study project
+    </span>
   </footer>
 </template>
 
 <style scoped lang="sass">
 .app-footer
-  padding: var(--space-6)
-  text-align: center
+  flex-shrink: 0
+  height: 28px
+  display: flex
+  align-items: center
+  justify-content: center
+  padding: 0 var(--space-3)
   color: var(--color-text-muted)
-  font-size: var(--font-xs)
+  font-size: 11px
   border-top: 1px solid var(--color-border)
-  background-color: var(--color-surface)
+  background-color: var(--color-bg)
+  text-align: center
 
-.attribution, .meta
-  margin: 0
+  a
+    color: var(--color-text-muted)
+    text-decoration: underline
 
-.meta
-  margin-top: var(--space-1)
-  opacity: 0.8
+    &:hover
+      color: var(--color-primary)
 </style>
