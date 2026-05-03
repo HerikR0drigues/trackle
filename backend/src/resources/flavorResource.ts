@@ -1,7 +1,3 @@
-/**
- * Resource layer — HTTP boundary for the flavors endpoints.
- * Validates input, calls the use case, formats output as ApiResponse<T>.
- */
 import type { RequestHandler } from 'express'
 import { flavorRepository } from '../repositories/flavorRepository'
 import { makeListFlavors } from '../usecases/listFlavors'

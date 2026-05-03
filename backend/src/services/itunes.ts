@@ -76,9 +76,13 @@ export const searchTracks = async ({
     country,
   })
   const url = `${BASE_URL}/search?${params.toString()}`
-  const res = await fetch(url, {
-    headers: { 'User-Agent': 'Trackle/0.1 (+study project)' },
-  })
+  const headers = { 'User-Agent': 'Trackle/0.1 (+study project)' }
+
+  let res = await fetch(url, { headers })
+  if (res.status === 429) {
+    await new Promise((resolve) => setTimeout(resolve, 5000))
+    res = await fetch(url, { headers })
+  }
   if (!res.ok) {
     throw new Error(`iTunes Search failed: HTTP ${res.status}`)
   }

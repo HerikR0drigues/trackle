@@ -29,6 +29,8 @@ const game = useGameStore()
   min-height: 0
 
   @include m.until-mobile
-    grid-template-columns: 1fr
+    grid-template-columns: repeat(3, minmax(0, 1fr))
+    gap: var(--space-2)
     height: auto
+    width: 100%
 </style>

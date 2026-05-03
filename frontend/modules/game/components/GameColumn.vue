@@ -94,6 +94,7 @@ const openGuess = (option: AlbumOption) => {
   border-radius: var(--radius-md)
   transition: border-color var(--duration-base)
   min-height: 0
+  min-width: 0
   width: max-content
 
   &.active
@@ -140,6 +141,10 @@ const openGuess = (option: AlbumOption) => {
   align-items: center
   justify-content: center
 
+  @include m.until-mobile
+    grid-template-columns: minmax(0, 1fr)
+    grid-auto-rows: auto
+
 .lock-overlay
   position: absolute
   inset: 0
@@ -157,5 +162,11 @@ const openGuess = (option: AlbumOption) => {
 
 @include m.until-mobile
   .game-col
-    min-height: 60vh
+    width: 100%
+    padding: var(--space-2)
+    gap: var(--space-2)
+
+  .play-btn
+    width: 32px
+    height: 32px
 </style>
