@@ -18,10 +18,17 @@ const isPlaying = computed(() => audio.isPlayingUrl(props.column.audio))
 const result = computed(() => game.results[props.columnIndex])
 const guessedId = computed(() => game.guesses[props.columnIndex]?.id)
 
-const cardState = (optionId: string): 'idle' | 'correct' | 'wrong' | 'locked' => {
+const correctOption = computed<AlbumOption | null>(
+  () => props.column.options.find((o) => o.previewUrl === props.column.audio) ?? null,
+)
+
+const cardState = (
+  optionId: string,
+): 'idle' | 'correct' | 'wrong' | 'locked' | 'correct-reveal' => {
   if (!result.value) return 'idle'
-  if (guessedId.value !== optionId) return 'locked'
-  return result.value
+  if (guessedId.value === optionId) return result.value
+  if (result.value === 'wrong' && correctOption.value?.id === optionId) return 'correct-reveal'
+  return 'locked'
 }
 
 const togglePlay = () => {
@@ -33,10 +40,12 @@ const modalOpen = ref(false)
 const modalOption = ref<AlbumOption | null>(null)
 
 const openGuess = (option: AlbumOption) => {
-  if (props.isLocked || result.value) return
+  if (props.isLocked) return
   modalOption.value = option
   modalOpen.value = true
 }
+
+const isResolved = computed(() => !!result.value)
 </script>
 
 <template>
@@ -76,6 +85,7 @@ const openGuess = (option: AlbumOption) => {
       v-model:open="modalOpen"
       :option="modalOption"
       :column-index="columnIndex"
+      :view-only="isResolved"
     />
   </section>
 </template>

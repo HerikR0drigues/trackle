@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { AlbumOption } from '~/modules/game/types'
 
-type CardState = 'idle' | 'correct' | 'wrong' | 'locked'
+type CardState = 'idle' | 'correct' | 'wrong' | 'locked' | 'correct-reveal'
 
 const props = defineProps<{
   option: AlbumOption
@@ -10,11 +10,11 @@ const props = defineProps<{
 
 const emit = defineEmits<{ (e: 'select', option: AlbumOption): void }>()
 
-const onClick = () => {
-  if (props.state === 'idle') emit('select', props.option)
-}
+const onClick = () => emit('select', props.option)
 
 const stateClass = computed(() => `state-${props.state}`)
+const showCheck = computed(() => props.state === 'correct' || props.state === 'correct-reveal')
+const showX = computed(() => props.state === 'wrong')
 </script>
 
 <template>
@@ -22,11 +22,17 @@ const stateClass = computed(() => `state-${props.state}`)
     type="button"
     class="album-card"
     :class="stateClass"
-    :disabled="state !== 'idle'"
     :aria-label="`${option.songTitle} by ${option.artist}`"
     @click="onClick"
   >
     <img :src="option.albumCover" :alt="`${option.album} — ${option.artist}`" loading="lazy" />
+
+    <span v-if="showCheck" class="badge badge-correct" aria-hidden="true">
+      <v-icon size="20">mdi-check-circle</v-icon>
+    </span>
+    <span v-else-if="showX" class="badge badge-wrong" aria-hidden="true">
+      <v-icon size="20">mdi-close-circle</v-icon>
+    </span>
   </button>
 </template>
 
@@ -63,18 +69,41 @@ const stateClass = computed(() => `state-${props.state}`)
     outline-offset: 2px
 
   &.state-correct
-    box-shadow: 0 0 0 2px var(--color-success), var(--shadow-sm)
-    cursor: default
+    box-shadow: 0 0 0 4px var(--color-success), var(--shadow-sm)
 
   &.state-wrong
-    cursor: default
+    box-shadow: 0 0 0 4px var(--color-danger), var(--shadow-sm)
     img
-      opacity: 0.5
-      filter: grayscale(0.7)
+      opacity: 0.7
+      filter: grayscale(0.3)
+
+  &.state-correct-reveal
+    img
+      opacity: 1
+      filter: none
 
   &.state-locked
-    cursor: not-allowed
     img
       opacity: 0.35
       filter: grayscale(0.4)
+
+.badge
+  position: absolute
+  top: 6px
+  right: 6px
+  width: 28px
+  height: 28px
+  border-radius: 50%
+  display: flex
+  align-items: center
+  justify-content: center
+  background-color: var(--color-surface)
+  box-shadow: var(--shadow-sm)
+  z-index: 1
+
+.badge-correct
+  color: var(--color-success)
+
+.badge-wrong
+  color: var(--color-danger)
 </style>

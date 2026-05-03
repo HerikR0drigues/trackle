@@ -1,31 +1,39 @@
 /**
- * Seeds the Postgres database with the initial Rock flavor and a curated
- * pool of tracks pulled from the iTunes Search API.
+ * Seeds the Postgres database. Two-phase, fully idempotent:
  *
- * Usage: `npm run seed` (idempotent — safe to re-run; uses upsert by itunesId).
+ * 1. Bootstrap (one-time): if the SeedTerm table is empty, ensures Flavor rows
+ *    exist and inserts the curated search terms below into SeedTerm with
+ *    status=pending. After this, the DB is the source of truth for terms.
+ *
+ * 2. Process: for each flavor, fetches SeedTerm rows where status IN
+ *    (pending, failed) and queries the iTunes API for each. On success,
+ *    upserts tracks and marks the term success. On error, marks the term
+ *    failed and stores the error.
+ *
+ * Re-running the seed only retries pending+failed terms — nothing already
+ * successful is queried again. To grow the pool, insert new SeedTerm rows
+ * (Prisma Studio, SQL, or future tooling) and re-run.
  */
 import 'dotenv/config'
 import { PrismaClient } from '@prisma/client'
 import { searchTracks, type NormalizedTrack } from '../src/services/itunes'
+import { seedTermRepository } from '../src/repositories/seedTermRepository'
 
 const prisma = new PrismaClient()
 
-interface FlavorSeed {
+interface FlavorBootstrap {
   id: string
   name: string
   description: string
-  searchTerms: string[]
-  /** Min number of unique tracks we want in the pool. */
-  targetTracks: number
+  terms: string[]
 }
 
-const FLAVORS: FlavorSeed[] = [
+const BOOTSTRAP_FLAVORS: FlavorBootstrap[] = [
   {
     id: 'rock',
     name: 'Rock',
     description: "Rockin' and rollin'",
-    targetTracks: 60,
-    searchTerms: [
+    terms: [
       'Queen Bohemian Rhapsody',
       'Queen Don\'t Stop Me Now',
       'Led Zeppelin Stairway to Heaven',
@@ -93,11 +101,10 @@ const FLAVORS: FlavorSeed[] = [
     ],
   },
   {
-    id: 'pop',                                                                                                                                                                          
-    name: 'Pop',                                                  
+    id: 'pop',
+    name: 'Pop',
     description: 'Catchy hits that stick',
-    targetTracks: 60,                                                                                                                                                                   
-    searchTerms: [
+    terms: [
       'Michael Jackson Billie Jean',                                                                                                                                                    
       'Michael Jackson Thriller',                                                                                                                                                       
       'Michael Jackson Beat It',                                                                                                                                                        
@@ -204,87 +211,122 @@ const FLAVORS: FlavorSeed[] = [
   },
 ]
 
-const dedupeByItunesId = (tracks: NormalizedTrack[]): NormalizedTrack[] => {
-  const seen = new Set<string>()
-  const out: NormalizedTrack[] = []
-  for (const t of tracks) {
-    if (seen.has(t.itunesId)) continue
-    seen.add(t.itunesId)
-    out.push(t)
-  }
-  return out
-}
-
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 
-const seedFlavor = async (flavor: FlavorSeed): Promise<void> => {
-  console.log(`\n[flavor:${flavor.id}] upserting flavor row`)
-  await prisma.flavor.upsert({
-    where: { id: flavor.id },
-    update: { name: flavor.name, description: flavor.description },
-    create: { id: flavor.id, name: flavor.name, description: flavor.description },
+const normalize = (s: string): string =>
+  s
+    .toLowerCase()
+    .replaceAll(/\(.*?\)|\[.*?\]/g, '')
+    .replaceAll(/\s*-\s*(remaster(ed)?|live|radio edit|instrumental|deluxe|mono|stereo|version).*/gi, '')
+    .replaceAll(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim()
+
+const songKeyOf = (artist: string, title: string): string =>
+  `${normalize(artist)}::${normalize(title)}`
+
+const loadExistingSongKeys = async (): Promise<Set<string>> => {
+  const all = await prisma.track.findMany({ select: { artist: true, title: true } })
+  return new Set(all.map((t) => songKeyOf(t.artist, t.title)))
+}
+
+const upsertTrack = (t: NormalizedTrack, flavorId: string) =>
+  prisma.track.upsert({
+    where: { itunesId: t.itunesId },
+    update: {
+      title: t.title,
+      artist: t.artist,
+      album: t.album,
+      year: t.year,
+      genre: t.genre,
+      artworkUrl: t.artworkUrl,
+      previewUrl: t.previewUrl,
+      flavorId,
+    },
+    create: {
+      itunesId: t.itunesId,
+      title: t.title,
+      artist: t.artist,
+      album: t.album,
+      year: t.year,
+      genre: t.genre,
+      artworkUrl: t.artworkUrl,
+      previewUrl: t.previewUrl,
+      flavorId,
+    },
   })
 
-  const collected: NormalizedTrack[] = []
-  for (const term of flavor.searchTerms) {
+const bootstrapIfEmpty = async (): Promise<void> => {
+  const total = await seedTermRepository.count()
+  if (total > 0) {
+    console.log('[bootstrap] SeedTerm já populado, pulando.')
+    return
+  }
+
+  for (const f of BOOTSTRAP_FLAVORS) {
+    await prisma.flavor.upsert({
+      where: { id: f.id },
+      update: { name: f.name, description: f.description },
+      create: { id: f.id, name: f.name, description: f.description },
+    })
+
+    const rows = f.terms.map((term) => ({ flavorId: f.id, term }))
+    const inserted = await seedTermRepository.bulkInsert(rows)
+    console.log(`[bootstrap] inseriu ${inserted} termos para ${f.id}`)
+  }
+}
+
+const processFlavor = async (
+  flavorId: string,
+  existingSongKeys: Set<string>,
+): Promise<void> => {
+  const todo = await seedTermRepository.findPendingOrFailed(flavorId)
+  if (todo.length === 0) {
+    const counts = await seedTermRepository.countByStatus(flavorId)
+    console.log(`[${flavorId}] nada a processar (success=${counts.success ?? 0})`)
+    return
+  }
+
+  console.log(`[${flavorId}] processando ${todo.length} termos`)
+
+  for (const seedTerm of todo) {
     try {
-      const tracks = await searchTracks({ term, limit: 10 })
-      for (let i = 0; i < Math.min(tracks.length, 5); i++) {
-        collected.push(tracks[i])
+      const tracks = await searchTracks({ term: seedTerm.term, limit: 10 })
+      let inserted = 0
+      for (const t of tracks) {
+        if (inserted >= 5) break
+        const key = songKeyOf(t.artist, t.title)
+        if (existingSongKeys.has(key)) continue
+        await upsertTrack(t, flavorId)
+        existingSongKeys.add(key)
+        inserted += 1
       }
-      process.stdout.write('.')
+      await seedTermRepository.markSuccess(seedTerm.id, inserted)
+      process.stdout.write(inserted === 0 ? '·' : '.')
     } catch (err) {
-      console.warn(`\n[flavor:${flavor.id}] search "${term}" failed:`, (err as Error).message)
+      const msg = (err as Error).message
+      await seedTermRepository.markFailed(seedTerm.id, msg)
+      process.stdout.write('x')
     }
     await sleep(300)
   }
   process.stdout.write('\n')
 
-  const unique = dedupeByItunesId(collected)
-  console.log(`[flavor:${flavor.id}] fetched ${collected.length} tracks (${unique.length} unique)`)
-
-  let upserted = 0
-  for (const t of unique) {
-    await prisma.track.upsert({
-      where: { itunesId: t.itunesId },
-      update: {
-        title: t.title,
-        artist: t.artist,
-        album: t.album,
-        year: t.year,
-        genre: t.genre,
-        artworkUrl: t.artworkUrl,
-        previewUrl: t.previewUrl,
-        flavorId: flavor.id,
-      },
-      create: {
-        itunesId: t.itunesId,
-        title: t.title,
-        artist: t.artist,
-        album: t.album,
-        year: t.year,
-        genre: t.genre,
-        artworkUrl: t.artworkUrl,
-        previewUrl: t.previewUrl,
-        flavorId: flavor.id,
-      },
-    })
-    upserted += 1
-  }
-
-  const total = await prisma.track.count({ where: { flavorId: flavor.id } })
-  console.log(`[flavor:${flavor.id}] upserted ${upserted}; total in DB: ${total}`)
-  if (total < flavor.targetTracks) {
-    console.warn(
-      `[flavor:${flavor.id}] WARNING: pool is ${total}, target was ${flavor.targetTracks}. ` +
-        `Extend FLAVORS[].searchTerms to grow the pool.`,
-    )
-  }
+  const counts = await seedTermRepository.countByStatus(flavorId)
+  const trackTotal = await prisma.track.count({ where: { flavorId } })
+  console.log(
+    `[${flavorId}] success=${counts.success ?? 0} failed=${counts.failed ?? 0} pending=${counts.pending ?? 0} | tracks no DB: ${trackTotal}`,
+  )
 }
 
 const main = async (): Promise<void> => {
-  for (const flavor of FLAVORS) {
-    await seedFlavor(flavor)
+  await bootstrapIfEmpty()
+
+  const existingSongKeys = await loadExistingSongKeys()
+  console.log(`[seed] ${existingSongKeys.size} unique song keys já no DB`)
+
+  const flavors = await prisma.flavor.findMany({ select: { id: true } })
+  for (const { id } of flavors) {
+    await processFlavor(id, existingSongKeys)
   }
 }
 

@@ -8,6 +8,7 @@ const props = defineProps<{
   open: boolean
   option: AlbumOption | null
   columnIndex: number
+  viewOnly?: boolean
 }>()
 
 const emit = defineEmits<{ (e: 'update:open', value: boolean): void }>()
@@ -20,13 +21,11 @@ watch(
   () => props.open,
   (isOpen, wasOpen) => {
     if (isOpen) {
-      // opening — reset reveal state
       result.value = null
       return
     }
-    if (!wasOpen) return // false → false; ignore
-    // dialog just closed
-    if (!result.value) return // closed without confirming a guess
+    if (!wasOpen) return
+    if (!result.value) return
     if (!game.puzzle) return
     const nextIdx = game.unlockedUntil
     if (nextIdx < game.puzzle.columns.length) {
@@ -42,7 +41,11 @@ const dialogModel = computed({
   set: (v) => emit('update:open', v),
 })
 
-const phase = computed(() => (result.value ? 'reveal' : 'confirm'))
+const phase = computed(() => {
+  if (result.value) return 'reveal'
+  if (props.viewOnly) return 'view'
+  return 'confirm'
+})
 
 const correctOption = computed<AlbumOption | null>(() => {
   if (!game.puzzle) return null
@@ -62,6 +65,10 @@ const close = () => emit('update:open', false)
 <template>
   <v-dialog v-model="dialogModel" max-width="320" :transition="false">
     <div v-if="option" class="guess-card">
+      <button type="button" class="close-x" aria-label="Close" @click="close">
+        <v-icon size="16">mdi-close</v-icon>
+      </button>
+
       <img class="cover" :src="option.albumCover" :alt="`${option.album} — ${option.artist}`" />
 
       <div class="meta">
@@ -74,7 +81,11 @@ const close = () => emit('update:open', false)
         Is this it?
       </button>
 
-      <div v-else class="reveal" :class="result === 'correct' ? 'reveal-correct' : 'reveal-wrong'">
+      <div
+        v-else-if="phase === 'reveal'"
+        class="reveal"
+        :class="result === 'correct' ? 'reveal-correct' : 'reveal-wrong'"
+      >
         <div class="reveal-banner">
           <v-icon size="20">{{ result === 'correct' ? 'mdi-check-circle' : 'mdi-close-circle' }}</v-icon>
           <span>{{ result === 'correct' ? 'Correct!' : 'Wrong' }}</span>
@@ -84,7 +95,6 @@ const close = () => emit('update:open', false)
           The correct one was <strong>{{ correctOption.songTitle }}</strong> by
           <strong>{{ correctOption.artist }}</strong>.
         </p>
-        <button type="button" class="close-btn" @click="close">Close</button>
       </div>
     </div>
   </v-dialog>
@@ -92,12 +102,41 @@ const close = () => emit('update:open', false)
 
 <style scoped lang="sass">
 .guess-card
+  position: relative
   background-color: var(--color-surface)
   border-radius: var(--radius-lg)
   padding: var(--space-3)
   display: flex
   flex-direction: column
   gap: var(--space-3)
+
+.close-x
+  position: absolute
+  top: calc(var(--space-3) + 2px)
+  right: calc(var(--space-3) + 2px)
+  width: 28px
+  height: 28px
+  border: none
+  border-radius: 50%
+  background-color: rgba(0, 0, 0, 0.45)
+  color: #fff
+  cursor: pointer
+  display: flex
+  align-items: center
+  justify-content: center
+  padding: 0
+  z-index: 2
+  backdrop-filter: blur(4px)
+  -webkit-backdrop-filter: blur(4px)
+  transition: background-color var(--duration-fast), transform var(--duration-fast)
+
+  &:hover
+    background-color: rgba(0, 0, 0, 0.65)
+    transform: scale(1.05)
+
+  &:focus-visible
+    outline: 2px solid var(--color-primary)
+    outline-offset: 2px
 
 .cover
   width: 100%
@@ -169,16 +208,4 @@ const close = () => emit('update:open', false)
   font-size: var(--font-sm)
   color: var(--color-text)
   text-align: center
-
-.close-btn
-  align-self: center
-  border: none
-  background: none
-  color: var(--color-text-muted)
-  font-size: var(--font-sm)
-  cursor: pointer
-  padding: var(--space-1) var(--space-3)
-
-  &:hover
-    color: var(--color-text)
 </style>

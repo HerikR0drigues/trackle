@@ -8,11 +8,12 @@ datasource db {
 }
 
 model Flavor {
-  id          String   @id
+  id          String     @id
   name        String
   description String
   tracks      Track[]
-  createdAt   DateTime @default(now())
+  seedTerms   SeedTerm[]
+  createdAt   DateTime   @default(now())
 }
 
 model Track {
@@ -44,4 +45,25 @@ model DailyPuzzleCache {
 
   @@unique([flavorId, date])
   @@index([flavorId])
+}
+
+enum SeedTermStatus {
+  pending
+  success
+  failed
+}
+
+model SeedTerm {
+  id          String         @id @default(cuid())
+  flavorId    String
+  flavor      Flavor         @relation(fields: [flavorId], references: [id])
+  term        String
+  status      SeedTermStatus @default(pending)
+  tracksFound Int            @default(0)
+  lastTriedAt DateTime?
+  lastError   String?
+  createdAt   DateTime       @default(now())
+
+  @@unique([flavorId, term])
+  @@index([flavorId, status])
 }
