@@ -57,6 +57,55 @@ export const normalize = (raw: ItunesTrackRaw): NormalizedTrack | null => {
   }
 }
 
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
+
+const RETRY_DELAYS: ReadonlyArray<{ base: number; spread: number }> = [
+  { base: 1_500, spread: 500 },
+  { base: 5_000, spread: 1_500 },
+  { base: 15_000, spread: 5_000 },
+  { base: 40_000, spread: 10_000 },
+]
+
+// iTunes returns 403 when our IP is being throttled; treat it as transient.
+const isRetriableStatus = (status: number): boolean =>
+  status === 403 || status === 429 || status >= 500
+
+const jitteredDelay = (base: number, spread: number): number =>
+  Math.max(0, base + (Math.random() - 0.5) * 2 * spread)
+
+class ItunesHttpError extends Error {
+  constructor(
+    public readonly status: number,
+    public readonly retriable: boolean,
+  ) {
+    super(`iTunes Search failed: HTTP ${status}`)
+  }
+}
+
+const fetchWithRetry = async (
+  url: string,
+  headers: Record<string, string>,
+): Promise<Response> => {
+  let lastError: Error | null = null
+  for (let attempt = 0; attempt <= RETRY_DELAYS.length; attempt++) {
+    try {
+      const res = await fetch(url, { headers })
+      if (res.ok) return res
+      const httpError = new ItunesHttpError(res.status, isRetriableStatus(res.status))
+      if (!httpError.retriable) throw httpError
+      lastError = httpError
+    } catch (err) {
+      if (err instanceof ItunesHttpError && !err.retriable) throw err
+      lastError = err as Error
+    }
+    if (attempt < RETRY_DELAYS.length) {
+      const { base, spread } = RETRY_DELAYS[attempt]
+      await sleep(jitteredDelay(base, spread))
+    }
+  }
+  throw lastError ?? new Error('iTunes Search failed after retries')
+}
+
 export interface SearchOptions {
   term: string
   limit?: number
@@ -65,7 +114,7 @@ export interface SearchOptions {
 
 export const searchTracks = async ({
   term,
-  limit = 25,
+  limit = 15,
   country = 'US',
 }: SearchOptions): Promise<NormalizedTrack[]> => {
   const params = new URLSearchParams({
@@ -78,14 +127,7 @@ export const searchTracks = async ({
   const url = `${BASE_URL}/search?${params.toString()}`
   const headers = { 'User-Agent': 'Trackle/0.1 (+study project)' }
 
-  let res = await fetch(url, { headers })
-  if (res.status === 429) {
-    await new Promise((resolve) => setTimeout(resolve, 5000))
-    res = await fetch(url, { headers })
-  }
-  if (!res.ok) {
-    throw new Error(`iTunes Search failed: HTTP ${res.status}`)
-  }
+  const res = await fetchWithRetry(url, headers)
   const data = (await res.json()) as ItunesSearchResponse
   const out: NormalizedTrack[] = []
   for (const r of data.results) {

@@ -1,31 +1,54 @@
 /**
  * Seeds the Postgres database. Two-phase, fully idempotent:
  *
- * 1. Bootstrap (one-time): if the SeedTerm table is empty, ensures Flavor rows
- *    exist and inserts the curated search terms below into SeedTerm with
- *    status=pending. After this, the DB is the source of truth for terms.
+ * 1. Bootstrap: ensures Flavor rows exist and inserts curated terms into
+ *    SeedTerm. Uses createMany({ skipDuplicates: true }) so adding new
+ *    flavors/terms to BOOTSTRAP_FLAVORS and re-running picks up only the diff.
  *
- * 2. Process: for each flavor, fetches SeedTerm rows where status IN
- *    (pending, failed) and queries the iTunes API for each. On success,
- *    upserts tracks and marks the term success. On error, marks the term
- *    failed and stores the error.
+ * 2. Process: fetches SeedTerm rows where status IN (pending, failed) per
+ *    flavor and queries iTunes for each — concurrent (p-limit(4)) with
+ *    exponential backoff on 429/5xx (handled inside services/itunes.ts).
+ *    Results are filtered by:
+ *      - flavor.yearRange (era flavors reject anything outside the window)
+ *      - per-term expectedArtist (rejects covers / re-recordings by other artists)
+ *      - title/album blacklist (rejects "cover", "karaoke", "tribute", etc.)
+ *    On success, upserts up to maxPerTerm tracks and marks the term success.
+ *    On error, marks failed and stores the error message.
  *
- * Re-running the seed only retries pending+failed terms — nothing already
- * successful is queried again. To grow the pool, insert new SeedTerm rows
- * (Prisma Studio, SQL, or future tooling) and re-run.
+ * Re-running only retries pending+failed terms. To grow the pool, add more
+ * entries to BOOTSTRAP_FLAVORS[].terms and re-run.
+ *
+ * CLI flags:
+ *   --flavor=<id>             process only this flavor (bootstrap still runs for all)
+ *   --bootstrap-only          bootstrap then exit (no iTunes calls)
+ *   --retry-success           also re-process terms with status=success
+ *   --clear-flavor=<csv>      delete Track + SeedTerm + DailyPuzzleCache rows for
+ *                             these flavor ids before bootstrap. Useful when the
+ *                             pool was poisoned by relevance noise and you want
+ *                             a clean re-seed.
  */
 import 'dotenv/config'
 import { PrismaClient } from '@prisma/client'
+import pLimit from 'p-limit'
 import { searchTracks, type NormalizedTrack } from '../src/services/itunes'
 import { seedTermRepository } from '../src/repositories/seedTermRepository'
 
 const prisma = new PrismaClient()
+const CONCURRENCY = 4
+const SEARCH_LIMIT = 25
+const DEFAULT_MAX_TRACKS_PER_TERM = 5
+
+type RawTerm = string | { query: string; artist?: string }
 
 interface FlavorBootstrap {
   id: string
   name: string
   description: string
-  terms: string[]
+  /** When set, tracks released outside this inclusive window are rejected. */
+  yearRange?: [number, number]
+  /** How many tracks to keep per term. Defaults to 5; era flavors use 2. */
+  maxPerTerm?: number
+  terms: RawTerm[]
 }
 
 const BOOTSTRAP_FLAVORS: FlavorBootstrap[] = [
@@ -35,7 +58,7 @@ const BOOTSTRAP_FLAVORS: FlavorBootstrap[] = [
     description: "Rockin' and rollin'",
     terms: [
       'Queen Bohemian Rhapsody',
-      'Queen Don\'t Stop Me Now',
+      "Queen Don't Stop Me Now",
       'Led Zeppelin Stairway to Heaven',
       'Led Zeppelin Whole Lotta Love',
       'AC/DC Back in Black',
@@ -56,7 +79,7 @@ const BOOTSTRAP_FLAVORS: FlavorBootstrap[] = [
       'Metallica Enter Sandman',
       'Black Sabbath Iron Man',
       'Deep Purple Smoke on the Water',
-      'The Who Baba O\'Riley',
+      "The Who Baba O'Riley",
       'The Doors Light My Fire',
       'Pink Floyd Comfortably Numb',
       'Pink Floyd Wish You Were Here',
@@ -105,116 +128,268 @@ const BOOTSTRAP_FLAVORS: FlavorBootstrap[] = [
     name: 'Pop',
     description: 'Catchy hits that stick',
     terms: [
-      'Michael Jackson Billie Jean',                                                                                                                                                    
-      'Michael Jackson Thriller',                                                                                                                                                       
-      'Michael Jackson Beat It',                                                                                                                                                        
-      'Michael Jackson Smooth Criminal',                                                                                                                                                
+      'Michael Jackson Billie Jean',
+      'Michael Jackson Thriller',
+      'Michael Jackson Beat It',
       'Madonna Like a Prayer',
-      'Madonna Material Girl',                                                                                                                                                          
-      'Madonna Like a Virgin',                                                                                                                                                          
+      'Madonna Material Girl',
       'Whitney Houston I Wanna Dance with Somebody',
-      'Whitney Houston I Will Always Love You',                                                                                                                                         
-      'Cyndi Lauper Girls Just Want to Have Fun',                 
-      'Tina Turner Whats Love Got to Do with It',                                                                                                                                       
-      'George Michael Careless Whisper',                                                                                                                                                
-      'Wham Last Christmas',                                                                                                                                                            
-      'A-ha Take On Me',                                                                                                                                                                
-      'Spice Girls Wannabe',                                      
-      'Backstreet Boys I Want It That Way',                                                                                                                                             
-      'NSYNC Bye Bye Bye',                                                                                                                                                              
+      'Whitney Houston I Will Always Love You',
+      'Cyndi Lauper Girls Just Want to Have Fun',
+      'George Michael Careless Whisper',
+      'A-ha Take On Me',
+      'Spice Girls Wannabe',
+      'Backstreet Boys I Want It That Way',
       'Britney Spears Baby One More Time',
-      'Britney Spears Toxic',                                                                                                                                                           
-      'Britney Spears Oops I Did It Again',                                                                                                                                             
+      'Britney Spears Toxic',
       'Christina Aguilera Genie in a Bottle',
-      'Mariah Carey Always Be My Baby',                                                                                                                                                 
-      'Celine Dion My Heart Will Go On',                          
-      'Ricky Martin Livin La Vida Loca',                                                                                                                                                
-      'Beyonce Crazy in Love',                                    
-      'Beyonce Halo',                                                                                                                                                                   
-      'Beyonce Single Ladies',                                                                                                                                                          
+      'Mariah Carey Always Be My Baby',
+      'Celine Dion My Heart Will Go On',
+      'Beyonce Crazy in Love',
+      'Beyonce Halo',
       'Rihanna Umbrella',
-      'Rihanna Diamonds',                                                                                                                                                               
-      'Rihanna We Found Love',                                    
-      'Lady Gaga Bad Romance',                                                                                                                                                          
-      'Lady Gaga Poker Face',                                                                                                                                                           
-      'Lady Gaga Just Dance',
-      'Katy Perry Roar',                                                                                                                                                                
-      'Katy Perry Firework',                                                                                                                                                            
-      'Katy Perry Teenage Dream',
-      'Justin Timberlake Cry Me a River',                                                                                                                                               
-      'Justin Timberlake SexyBack',                                                                                                                                                     
-      'Pink So What',
-      'Kelly Clarkson Since U Been Gone',                                                                                                                                               
-      'Adele Rolling in the Deep',                                
-      'Adele Hello',                                                                                                                                                                    
-      'Adele Someone Like You',                                                                                                                                                         
+      'Rihanna Diamonds',
+      'Lady Gaga Bad Romance',
+      'Lady Gaga Poker Face',
+      'Katy Perry Roar',
+      'Katy Perry Firework',
+      'Adele Rolling in the Deep',
+      'Adele Hello',
       'Bruno Mars Uptown Funk',
-      'Bruno Mars Just the Way You Are',                                                                                                                                                
-      'Bruno Mars Grenade',                                                                                                                                                             
       'Taylor Swift Shake It Off',
-      'Taylor Swift Blank Space',                                                                                                                                                       
-      'Taylor Swift Bad Blood',                                                                                                                                                         
+      'Taylor Swift Blank Space',
       'Justin Bieber Sorry',
-      'Justin Bieber Love Yourself',                                                                                                                                                    
-      'Justin Bieber Baby',                                                                                                                                                             
       'Ed Sheeran Shape of You',
-      'Ed Sheeran Perfect',                                                                                                                                                             
-      'Ed Sheeran Thinking Out Loud',                             
-      'Ariana Grande Thank U Next',                                                                                                                                                     
-      'Ariana Grande 7 Rings',                                                                                                                                                          
-      'Ariana Grande Problem',                                                                                                                                                          
-      'Sia Chandelier',                                                                                                                                                                 
-      'Sia Cheap Thrills',                                                                                                                                                              
-      'The Weeknd Blinding Lights',                               
-      'The Weeknd Save Your Tears',                                                                                                                                                     
+      'Ariana Grande 7 Rings',
+      'The Weeknd Blinding Lights',
       'Dua Lipa Levitating',
-      'Dua Lipa New Rules',                                                                                                                                                             
-      'Dua Lipa Dont Start Now',                                  
-      'Billie Eilish Bad Guy',                                                                                                                                                          
-      'Billie Eilish Happier Than Ever',                                                                                                                                                
+      'Billie Eilish Bad Guy',
       'Olivia Rodrigo Drivers License',
-      'Olivia Rodrigo Good 4 U',                                                                                                                                                        
-      'Harry Styles Watermelon Sugar',                            
-      'Harry Styles As It Was',                                                                                                                                                         
+      'Harry Styles As It Was',
       'Doja Cat Say So',
       'Miley Cyrus Flowers',
-      'Maroon 5 Memories',
       'Maroon 5 Sugar',
-      'Maroon 5 Moves Like Jagger',
       'Coldplay Viva la Vida',
-      'Coldplay The Scientist',
       'Shakira Hips Dont Lie',
-      'Shakira Waka Waka',
-      'Lana Del Rey Summertime Sadness',
-      'Lana Del Rey Video Games',
-      'Selena Gomez Lose You to Love Me',
-      'Selena Gomez Same Old Love',
-      'Demi Lovato Heart Attack',
-      'Camila Cabello Havana',
-      'Charlie Puth Attention',
-      'Shawn Mendes Stitches',
-      'Shawn Mendes Senorita',
-      'Sam Smith Stay With Me',
-      'Avicii Wake Me Up',
-      'Avicii Levels',
-      'Calvin Harris Summer',
-      'Pink Try',
-      'Pink Just Give Me a Reason',
-      'Christina Aguilera Beautiful',
-      'Jennifer Lopez On the Floor',
-      'Gwen Stefani Hollaback Girl',
+      'Sia Cheap Thrills',
       'Black Eyed Peas I Gotta Feeling',
-      'Black Eyed Peas Where Is the Love',
       'OneRepublic Counting Stars',
       'Imagine Dragons Believer',
     ],
   },
+  {
+    id: 'hiphop',
+    name: 'Hip Hop',
+    description: 'Drop the beat',
+    terms: [
+      { query: 'Tupac California Love', artist: '2Pac' },
+      { query: 'Tupac Changes', artist: '2Pac' },
+      { query: 'Notorious BIG Juicy', artist: 'The Notorious B.I.G.' },
+      { query: 'Notorious BIG Hypnotize', artist: 'The Notorious B.I.G.' },
+      { query: 'Eminem Lose Yourself', artist: 'Eminem' },
+      { query: 'Eminem Stan', artist: 'Eminem' },
+      { query: 'Eminem My Name Is', artist: 'Eminem' },
+      { query: 'Jay-Z Empire State of Mind', artist: 'JAY-Z' },
+      { query: 'Jay-Z 99 Problems', artist: 'JAY-Z' },
+      { query: 'Nas NY State of Mind', artist: 'Nas' },
+      { query: 'Kendrick Lamar HUMBLE', artist: 'Kendrick Lamar' },
+      { query: 'Kendrick Lamar Alright', artist: 'Kendrick Lamar' },
+      { query: 'Drake Hotline Bling', artist: 'Drake' },
+      { query: "Drake God's Plan", artist: 'Drake' },
+      { query: 'Kanye West Stronger', artist: 'Kanye West' },
+      { query: 'Kanye West Heartless', artist: 'Kanye West' },
+      { query: 'Snoop Dogg Gin and Juice', artist: 'Snoop Dogg' },
+      { query: 'Dr Dre Still Dre', artist: 'Dr. Dre' },
+      { query: 'Outkast Hey Ya', artist: 'Outkast' },
+      { query: 'Outkast Ms Jackson', artist: 'Outkast' },
+      { query: 'Wu-Tang Clan CREAM', artist: 'Wu-Tang Clan' },
+      { query: 'Run DMC Walk This Way', artist: 'RUN-DMC' },
+      { query: 'NWA Straight Outta Compton', artist: 'N.W.A' },
+      { query: '50 Cent In Da Club', artist: '50 Cent' },
+      { query: 'Lil Wayne A Milli', artist: 'Lil Wayne' },
+      { query: 'J Cole No Role Modelz', artist: 'J. Cole' },
+      { query: 'Travis Scott SICKO MODE', artist: 'Travis Scott' },
+      { query: 'Future Mask Off', artist: 'Future' },
+      { query: 'Missy Elliott Get Ur Freak On', artist: 'Missy Elliott' },
+      { query: 'Lauryn Hill Doo Wop', artist: 'Lauryn Hill' },
+    ],
+  },
+  {
+    id: 'hitparade',
+    name: 'Hit Parade',
+    description: "What's hot this week",
+    yearRange: [2018, 2030],
+    maxPerTerm: 2,
+    terms: [
+      { query: 'Taylor Swift Anti-Hero', artist: 'Taylor Swift' },
+      { query: 'Taylor Swift Cruel Summer', artist: 'Taylor Swift' },
+      { query: 'Bad Bunny Tití Me Preguntó', artist: 'Bad Bunny' },
+      { query: 'Olivia Rodrigo Vampire', artist: 'Olivia Rodrigo' },
+      { query: 'Harry Styles As It Was', artist: 'Harry Styles' },
+      { query: 'Dua Lipa Levitating', artist: 'Dua Lipa' },
+      { query: 'The Weeknd Blinding Lights', artist: 'The Weeknd' },
+      { query: 'Sabrina Carpenter Espresso', artist: 'Sabrina Carpenter' },
+      { query: 'Billie Eilish Birds of a Feather', artist: 'Billie Eilish' },
+      { query: 'Doja Cat Paint The Town Red', artist: 'Doja Cat' },
+      { query: 'SZA Kill Bill', artist: 'SZA' },
+      { query: 'Morgan Wallen Last Night', artist: 'Morgan Wallen' },
+      { query: 'Post Malone Circles', artist: 'Post Malone' },
+      { query: 'Justin Bieber Peaches', artist: 'Justin Bieber' },
+      { query: 'Lil Nas X Old Town Road', artist: 'Lil Nas X' },
+      { query: 'Beyonce Texas Hold Em', artist: 'Beyoncé' },
+      { query: 'Charli XCX 360', artist: 'Charli xcx' },
+      { query: 'Tyla Water', artist: 'Tyla' },
+      { query: 'Miley Cyrus Flowers', artist: 'Miley Cyrus' },
+      { query: 'Bruno Mars 24K Magic', artist: 'Bruno Mars' },
+      { query: 'Taylor Swift Shake It Off', artist: 'Taylor Swift' },
+      { query: 'Drake One Dance', artist: 'Drake' },
+      { query: 'Ed Sheeran Shape of You', artist: 'Ed Sheeran' },
+      { query: 'Ariana Grande 7 Rings', artist: 'Ariana Grande' },
+      { query: 'Justin Bieber Stay', artist: 'Justin Bieber' },
+    ],
+  },
+  {
+    id: '90s',
+    name: 'The 90s',
+    description: 'Come as you are',
+    yearRange: [1990, 1999],
+    maxPerTerm: 2,
+    terms: [
+      { query: 'Nirvana Smells Like Teen Spirit', artist: 'Nirvana' },
+      { query: 'Backstreet Boys I Want It That Way', artist: 'Backstreet Boys' },
+      { query: 'Spice Girls Wannabe', artist: 'Spice Girls' },
+      { query: 'Britney Spears Baby One More Time', artist: 'Britney Spears' },
+      { query: 'Whitney Houston I Will Always Love You', artist: 'Whitney Houston' },
+      { query: 'Mariah Carey Always Be My Baby', artist: 'Mariah Carey' },
+      { query: 'Celine Dion My Heart Will Go On', artist: 'Céline Dion' },
+      { query: 'Madonna Vogue', artist: 'Madonna' },
+      { query: 'MC Hammer U Cant Touch This', artist: 'MC Hammer' },
+      { query: 'Vanilla Ice Ice Ice Baby', artist: 'Vanilla Ice' },
+      { query: 'TLC Waterfalls', artist: 'TLC' },
+      { query: "Destiny's Child Bills Bills Bills", artist: "Destiny's Child" },
+      { query: 'Aqua Barbie Girl', artist: 'Aqua' },
+      { query: 'Eiffel 65 Blue', artist: 'Eiffel 65' },
+      { query: 'Cher Believe', artist: 'Cher' },
+      { query: "Coolio Gangsta's Paradise", artist: 'Coolio' },
+      { query: 'Sir Mix-a-Lot Baby Got Back', artist: 'Sir Mix-A-Lot' },
+      { query: 'Alanis Morissette Ironic', artist: 'Alanis Morissette' },
+      { query: 'Smashing Pumpkins 1979', artist: 'The Smashing Pumpkins' },
+      { query: 'Pearl Jam Alive', artist: 'Pearl Jam' },
+      { query: 'Soundgarden Black Hole Sun', artist: 'Soundgarden' },
+      { query: 'Red Hot Chili Peppers Under the Bridge', artist: 'Red Hot Chili Peppers' },
+      { query: 'Sheryl Crow All I Wanna Do', artist: 'Sheryl Crow' },
+      { query: 'REM Losing My Religion', artist: 'R.E.M.' },
+      { query: 'Oasis Wonderwall', artist: 'Oasis' },
+      { query: 'Radiohead Creep', artist: 'Radiohead' },
+      { query: 'Bryan Adams Everything I Do', artist: 'Bryan Adams' },
+      { query: 'Spin Doctors Two Princes', artist: 'Spin Doctors' },
+    ],
+  },
+  {
+    id: '2000s',
+    name: 'The 2000s',
+    description: 'I gotta feeling',
+    yearRange: [2000, 2009],
+    maxPerTerm: 2,
+    terms: [
+      { query: 'Beyonce Crazy in Love', artist: 'Beyoncé' },
+      { query: 'Rihanna Umbrella', artist: 'Rihanna' },
+      { query: 'Lady Gaga Just Dance', artist: 'Lady Gaga' },
+      { query: 'Lady Gaga Bad Romance', artist: 'Lady Gaga' },
+      { query: 'Kanye West Stronger', artist: 'Kanye West' },
+      { query: 'Eminem Lose Yourself', artist: 'Eminem' },
+      { query: 'Coldplay Yellow', artist: 'Coldplay' },
+      { query: 'Coldplay Viva la Vida', artist: 'Coldplay' },
+      { query: 'Linkin Park In the End', artist: 'Linkin Park' },
+      { query: 'Linkin Park Numb', artist: 'Linkin Park' },
+      { query: 'The Killers Mr Brightside', artist: 'The Killers' },
+      { query: 'Outkast Hey Ya', artist: 'Outkast' },
+      { query: 'Black Eyed Peas I Gotta Feeling', artist: 'The Black Eyed Peas' },
+      { query: 'Justin Timberlake Cry Me a River', artist: 'Justin Timberlake' },
+      { query: 'Britney Spears Toxic', artist: 'Britney Spears' },
+      { query: 'Avril Lavigne Complicated', artist: 'Avril Lavigne' },
+      { query: 'Christina Aguilera Beautiful', artist: 'Christina Aguilera' },
+      { query: 'Pink So What', artist: 'P!nk' },
+      { query: 'Maroon 5 This Love', artist: 'Maroon 5' },
+      { query: 'Snow Patrol Chasing Cars', artist: 'Snow Patrol' },
+      { query: 'Green Day American Idiot', artist: 'Green Day' },
+      { query: "Fall Out Boy Sugar We're Going Down", artist: 'Fall Out Boy' },
+      { query: 'MIA Paper Planes', artist: 'M.I.A.' },
+      { query: 'Lil Wayne Lollipop', artist: 'Lil Wayne' },
+      { query: 'Usher Yeah', artist: 'Usher' },
+      { query: 'Daft Punk One More Time', artist: 'Daft Punk' },
+      { query: 'Gnarls Barkley Crazy', artist: 'Gnarls Barkley' },
+      { query: 'MGMT Kids', artist: 'MGMT' },
+      { query: 'OneRepublic Apologize', artist: 'OneRepublic' },
+      { query: 'Kelly Clarkson Since U Been Gone', artist: 'Kelly Clarkson' },
+    ],
+  },
 ]
 
-const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
+// ===== helpers =====================================================
 
-const normalize = (s: string): string =>
-  s
+const queryOf = (t: RawTerm): string => (typeof t === 'string' ? t : t.query)
+const artistOf = (t: RawTerm): string | undefined => (typeof t === 'string' ? undefined : t.artist)
+
+/** Per-flavor and per-term filtering hints, populated from BOOTSTRAP_FLAVORS. */
+const flavorYearRange = new Map<string, [number, number]>()
+const flavorMaxPerTerm = new Map<string, number>()
+const termArtistHint = new Map<string, string>() // key: `${flavorId}::${query}`
+
+for (const f of BOOTSTRAP_FLAVORS) {
+  if (f.yearRange) flavorYearRange.set(f.id, f.yearRange)
+  if (typeof f.maxPerTerm === 'number') flavorMaxPerTerm.set(f.id, f.maxPerTerm)
+  for (const t of f.terms) {
+    const a = artistOf(t)
+    if (a) termArtistHint.set(`${f.id}::${queryOf(t)}`, a)
+  }
+}
+
+const stripDiacritics = (s: string): string =>
+  s.normalize('NFD').replaceAll(/[̀-ͯ]/g, '')
+
+const cleanArtistName = (name: string): string =>
+  stripDiacritics(name)
+    .toLowerCase()
+    .replaceAll(/\(.*?\)|\[.*?\]/g, '')
+    .replaceAll(/\s+(?:feat\.?|featuring|with|presents|ft\.?)\s+.+$/gi, '')
+    .replaceAll(/[,&].+$/g, '')
+    .replaceAll(/[^a-z0-9]/g, '')
+    .trim()
+
+const matchesArtist = (trackArtist: string, expected: string): boolean =>
+  cleanArtistName(trackArtist) === cleanArtistName(expected)
+
+const inYearRange = (year: number | null, range: [number, number]): boolean => {
+  if (year === null) return false
+  return year >= range[0] && year <= range[1]
+}
+
+const BLACKLIST_PATTERNS =
+  /\b(cover|covered by|karaoke|tribute|backing track|piano version|orchestra(l)?|instrumental|kids version|sleep|lullaby|brass band|made famous by|originally performed|in the style of|reggae version|8-?bit|acapella)\b/i
+
+const isBlacklistedTitle = (track: NormalizedTrack): boolean =>
+  BLACKLIST_PATTERNS.test(track.title) || BLACKLIST_PATTERNS.test(track.album)
+
+const filterCandidates = (
+  tracks: NormalizedTrack[],
+  flavorId: string,
+  query: string,
+): NormalizedTrack[] => {
+  const expectedArtist = termArtistHint.get(`${flavorId}::${query}`)
+  const yearRange = flavorYearRange.get(flavorId)
+  const out: NormalizedTrack[] = []
+  for (const t of tracks) {
+    if (isBlacklistedTitle(t)) continue
+    if (expectedArtist && !matchesArtist(t.artist, expectedArtist)) continue
+    if (yearRange && !inYearRange(t.year, yearRange)) continue
+    out.push(t)
+  }
+  return out
+}
+
+const normalizeForKey = (s: string): string =>
+  stripDiacritics(s)
     .toLowerCase()
     .replaceAll(/\(.*?\)|\[.*?\]/g, '')
     .replaceAll(/\s*-\s*(remaster(ed)?|live|radio edit|instrumental|deluxe|mono|stereo|version).*/gi, '')
@@ -222,7 +397,7 @@ const normalize = (s: string): string =>
     .trim()
 
 const songKeyOf = (artist: string, title: string): string =>
-  `${normalize(artist)}::${normalize(title)}`
+  `${normalizeForKey(artist)}::${normalizeForKey(title)}`
 
 const loadExistingSongKeys = async (): Promise<Set<string>> => {
   const all = await prisma.track.findMany({ select: { artist: true, title: true } })
@@ -255,13 +430,7 @@ const upsertTrack = (t: NormalizedTrack, flavorId: string) =>
     },
   })
 
-const bootstrapIfEmpty = async (): Promise<void> => {
-  const total = await seedTermRepository.count()
-  if (total > 0) {
-    console.log('[bootstrap] SeedTerm já populado, pulando.')
-    return
-  }
-
+const bootstrap = async (): Promise<void> => {
   for (const f of BOOTSTRAP_FLAVORS) {
     await prisma.flavor.upsert({
       where: { id: f.id },
@@ -269,64 +438,152 @@ const bootstrapIfEmpty = async (): Promise<void> => {
       create: { id: f.id, name: f.name, description: f.description },
     })
 
-    const rows = f.terms.map((term) => ({ flavorId: f.id, term }))
+    const rows = f.terms.map((t) => ({ flavorId: f.id, term: queryOf(t) }))
     const inserted = await seedTermRepository.bulkInsert(rows)
-    console.log(`[bootstrap] inseriu ${inserted} termos para ${f.id}`)
+    if (inserted > 0) {
+      console.log(`[bootstrap] +${inserted} new terms for ${f.id}`)
+    }
   }
+}
+
+const clearFlavorData = async (flavorIds: string[]): Promise<void> => {
+  for (const id of flavorIds) {
+    const cache = await prisma.dailyPuzzleCache.deleteMany({ where: { flavorId: id } })
+    const tracks = await prisma.track.deleteMany({ where: { flavorId: id } })
+    const terms = await prisma.seedTerm.deleteMany({ where: { flavorId: id } })
+    console.log(
+      `[clear] flavor "${id}": removed ${tracks.count} tracks, ${terms.count} terms, ${cache.count} cached puzzles`,
+    )
+  }
+}
+
+interface CliArgs {
+  flavorId: string | null
+  bootstrapOnly: boolean
+  retrySuccess: boolean
+  clearFlavors: string[]
+}
+
+const parseArgs = (argv: string[]): CliArgs => {
+  const args: CliArgs = { flavorId: null, bootstrapOnly: false, retrySuccess: false, clearFlavors: [] }
+  for (const a of argv) {
+    if (a === '--bootstrap-only') args.bootstrapOnly = true
+    else if (a === '--retry-success') args.retrySuccess = true
+    else if (a.startsWith('--flavor=')) args.flavorId = a.slice('--flavor='.length)
+    else if (a.startsWith('--clear-flavor=')) {
+      args.clearFlavors = a
+        .slice('--clear-flavor='.length)
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+    }
+  }
+  return args
+}
+
+const fetchTermsToProcess = async (flavorId: string, retrySuccess: boolean) => {
+  if (retrySuccess) {
+    return prisma.seedTerm.findMany({
+      where: { flavorId },
+      orderBy: [{ status: 'asc' }, { createdAt: 'asc' }],
+    })
+  }
+  return seedTermRepository.findPendingOrFailed(flavorId)
 }
 
 const processFlavor = async (
   flavorId: string,
   existingSongKeys: Set<string>,
+  limit: ReturnType<typeof pLimit>,
+  retrySuccess: boolean,
 ): Promise<void> => {
-  const todo = await seedTermRepository.findPendingOrFailed(flavorId)
+  const todo = await fetchTermsToProcess(flavorId, retrySuccess)
   if (todo.length === 0) {
     const counts = await seedTermRepository.countByStatus(flavorId)
-    console.log(`[${flavorId}] nada a processar (success=${counts.success ?? 0})`)
+    console.log(`[${flavorId}] nothing to process (success=${counts.success ?? 0})`)
     return
   }
 
-  console.log(`[${flavorId}] processando ${todo.length} termos`)
+  const maxPerTerm = flavorMaxPerTerm.get(flavorId) ?? DEFAULT_MAX_TRACKS_PER_TERM
+  const yearRange = flavorYearRange.get(flavorId)
+  const filterDesc = yearRange ? ` year=${yearRange[0]}-${yearRange[1]}` : ''
+  console.log(
+    `[${flavorId}] processing ${todo.length} terms (concurrency=${CONCURRENCY} maxPerTerm=${maxPerTerm}${filterDesc})`,
+  )
 
-  for (const seedTerm of todo) {
-    try {
-      const tracks = await searchTracks({ term: seedTerm.term, limit: 10 })
-      let inserted = 0
-      for (const t of tracks) {
-        if (inserted >= 5) break
-        const key = songKeyOf(t.artist, t.title)
-        if (existingSongKeys.has(key)) continue
-        await upsertTrack(t, flavorId)
-        existingSongKeys.add(key)
-        inserted += 1
-      }
-      await seedTermRepository.markSuccess(seedTerm.id, inserted)
-      process.stdout.write(inserted === 0 ? '·' : '.')
-    } catch (err) {
-      const msg = (err as Error).message
-      await seedTermRepository.markFailed(seedTerm.id, msg)
-      process.stdout.write('x')
-    }
-    await sleep(300)
-  }
+  await Promise.all(
+    todo.map((seedTerm) =>
+      limit(async () => {
+        try {
+          const raw = await searchTracks({ term: seedTerm.term, limit: SEARCH_LIMIT })
+          const candidates = filterCandidates(raw, flavorId, seedTerm.term)
+          let inserted = 0
+          for (const t of candidates) {
+            if (inserted >= maxPerTerm) break
+            const key = songKeyOf(t.artist, t.title)
+            if (existingSongKeys.has(key)) continue
+            existingSongKeys.add(key)
+            await upsertTrack(t, flavorId)
+            inserted += 1
+          }
+          await seedTermRepository.markSuccess(seedTerm.id, inserted)
+          process.stdout.write(inserted === 0 ? '·' : '.')
+        } catch (err) {
+          const msg = (err as Error).message
+          await seedTermRepository.markFailed(seedTerm.id, msg)
+          process.stdout.write('x')
+        }
+      }),
+    ),
+  )
   process.stdout.write('\n')
 
   const counts = await seedTermRepository.countByStatus(flavorId)
   const trackTotal = await prisma.track.count({ where: { flavorId } })
   console.log(
-    `[${flavorId}] success=${counts.success ?? 0} failed=${counts.failed ?? 0} pending=${counts.pending ?? 0} | tracks no DB: ${trackTotal}`,
+    `[${flavorId}] success=${counts.success ?? 0} failed=${counts.failed ?? 0} pending=${counts.pending ?? 0} | tracks in DB: ${trackTotal}`,
   )
 }
 
 const main = async (): Promise<void> => {
-  await bootstrapIfEmpty()
+  const args = parseArgs(process.argv.slice(2))
+  const flagsTxt = [
+    args.flavorId ? `flavor=${args.flavorId}` : '',
+    args.bootstrapOnly ? 'bootstrap-only' : '',
+    args.retrySuccess ? 'retry-success' : '',
+    args.clearFlavors.length ? `clear=${args.clearFlavors.join(',')}` : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
+  console.log(`[seed] args: ${flagsTxt || '(default)'}`)
+
+  if (args.clearFlavors.length > 0) {
+    await clearFlavorData(args.clearFlavors)
+  }
+
+  await bootstrap()
+
+  if (args.bootstrapOnly) {
+    console.log('[seed] --bootstrap-only — exiting without iTunes calls')
+    return
+  }
 
   const existingSongKeys = await loadExistingSongKeys()
-  console.log(`[seed] ${existingSongKeys.size} unique song keys já no DB`)
+  console.log(`[seed] ${existingSongKeys.size} unique song keys already in DB`)
 
-  const flavors = await prisma.flavor.findMany({ select: { id: true } })
-  for (const { id } of flavors) {
-    await processFlavor(id, existingSongKeys)
+  const allFlavors = await prisma.flavor.findMany({ select: { id: true } })
+  const flavorIds = args.flavorId
+    ? allFlavors.filter((f) => f.id === args.flavorId).map((f) => f.id)
+    : allFlavors.map((f) => f.id)
+
+  if (args.flavorId && flavorIds.length === 0) {
+    console.error(`[seed] flavor "${args.flavorId}" not found`)
+    process.exit(1)
+  }
+
+  const limit = pLimit(CONCURRENCY)
+  for (const flavorId of flavorIds) {
+    await processFlavor(flavorId, existingSongKeys, limit, args.retrySuccess)
   }
 }
 
